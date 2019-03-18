@@ -3,6 +3,7 @@ import scrapy
 import re
 from scrapy.http import Request
 from scrapy.loader import ItemLoader
+from ..items import ArticleItem
 
 
 class JobboleSpider(scrapy.Spider):
@@ -19,10 +20,15 @@ class JobboleSpider(scrapy.Spider):
         """
 
         # 解析列表页中所有文章的url
-        article_url_xpath = '//a[@class="archive-title"]/@href'
-        all_articles_url = response.xpath(article_url_xpath).extract()
-        for article_url in all_articles_url:
-            yield Request(article_url, callback=self.parse_detail)
+        article_a_label_xpath = '//div[@class="post-thumb"]//a'
+        a_label_selector = response.xpath(article_a_label_xpath)
+
+        # 使用meta参数传递额外的信息
+        for select in a_label_selector:
+            article_url = select.xpath('@href').extract_first()
+            front_image_url = select.xpath('./img/@src').extract_first()
+            yield Request(article_url, callback=self.parse_detail,
+                          meta={"front_image_url": front_image_url})
 
         # 解析下一页文章
         next_page_xpath = '//a[@class="next page-numbers"]/@href'
@@ -36,6 +42,12 @@ class JobboleSpider(scrapy.Spider):
         :param response:
         :return:
         """
+
+        article_item = ArticleItem()
+
+        article_url = response.url
+        article_image_url = response.meta.get('front_image_url', "")
+
         article_title_xpath = '//div[@class="entry-header"]/h1/text()'
         article_date_xpath = '//p[@class="entry-meta-hide-on-mobile"]/text()'
         article_tag_xpath = '//p[@class="entry-meta-hide-on-mobile"]//a'
@@ -45,6 +57,7 @@ class JobboleSpider(scrapy.Spider):
 
         article_title = response.xpath(article_title_xpath).extract_first()
         article_date = response.xpath(article_date_xpath).extract_first().strip().split(' ')[0]
+
         article_tags = response.xpath('//p[@class="entry-meta-hide-on-mobile"]//a/text()').extract()
         article_tag = [tag for tag in article_tags if not tag.strip().endswith(r'评论')]
 
@@ -60,3 +73,14 @@ class JobboleSpider(scrapy.Spider):
         article_comments = response.xpath(article_comment_num_xpath).extract_first().strip()
         is_exist_comment = re.match('(\d+)', article_comments)
         article_comment = int(is_exist_comment.group(1)) if is_exist_comment else 0
+
+        article_item['article_url'] = article_url
+        article_item['article_image_url'] = article_image_url
+        article_item['article_title'] = article_title
+        article_item['article_date'] = article_date
+        article_item['article_tag'] = article_tag
+        article_item['article_like_num'] = article_like_num
+        article_item['article_collect'] = article_collect
+        article_item['article_comment'] = article_comment
+
+        yield article_item
