@@ -16,6 +16,7 @@ class BoleScrapyItem(scrapy.Item):
 
 class ArticleItem(scrapy.Item):
     article_url = scrapy.Field()
+    article_url_object_id = scrapy.Field()
     article_title = scrapy.Field()
     article_image_url = scrapy.Field()
     article_image_local_path = scrapy.Field()

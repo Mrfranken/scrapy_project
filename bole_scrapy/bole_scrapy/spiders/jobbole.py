@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 import scrapy
 import re
+from datetime import datetime
 from scrapy.http import Request
 from scrapy.loader import ItemLoader
 from ..items import ArticleItem
+from ..utils.common import trans_str_to_md5
 
 
 class JobboleSpider(scrapy.Spider):
@@ -23,17 +25,18 @@ class JobboleSpider(scrapy.Spider):
         article_a_label_xpath = '//div[@class="post-thumb"]//a'
         a_label_selector = response.xpath(article_a_label_xpath)
 
-        # 使用meta参数传递额外的信息
+        # 使用meta参数传递额外的信息 流程7 spiders -(item)> engine
         for select in a_label_selector:
             article_url = select.xpath('@href').extract_first()
-            front_image_url = select.xpath('./img/@src').extract_first()
+            article_image_url = select.xpath('./img/@src').extract_first()
             yield Request(article_url, callback=self.parse_detail,
-                          meta={"front_image_url": front_image_url})
+                          meta={"article_image_url": article_image_url})
 
         # 解析下一页文章
         next_page_xpath = '//a[@class="next page-numbers"]/@href'
         next_page_url = response.xpath(next_page_xpath).extract_first()
         if next_page_url:
+            # 流程7 spiders -(request)> engine
             yield Request(next_page_url, callback=self.parse)
 
     def parse_detail(self, response):
@@ -46,7 +49,11 @@ class JobboleSpider(scrapy.Spider):
         article_item = ArticleItem()
 
         article_url = response.url
-        article_image_url = response.meta.get('front_image_url', "")
+
+        default_imag_url = "http://jbcdn2.b0.upaiyun.com/2014/07/6da94dec8f6f96417f14c8291e634580.png"
+        article_image_url = response.meta.get('article_image_url', default_imag_url)
+        if "http" not in article_image_url:
+            article_image_url = "https://" + article_image_url
 
         article_title_xpath = '//div[@class="entry-header"]/h1/text()'
         article_date_xpath = '//p[@class="entry-meta-hide-on-mobile"]/text()'
@@ -75,9 +82,16 @@ class JobboleSpider(scrapy.Spider):
         article_comment = int(is_exist_comment.group(1)) if is_exist_comment else 0
 
         article_item['article_url'] = article_url
-        article_item['article_image_url'] = article_image_url
+        article_item['article_url_object_id'] = trans_str_to_md5(article_url)
+        article_item['article_image_url'] = [article_image_url] # 在进行图片下载时, 这个url应该是一个list类型
         article_item['article_title'] = article_title
-        article_item['article_date'] = article_date
+
+        try:
+            article_date_trans = datetime.strptime(article_date, '%Y/%m/%d').date()
+        except:
+            article_date_trans = datetime.now().date()
+        article_item['article_date'] = article_date_trans
+
         article_item['article_tag'] = article_tag
         article_item['article_like_num'] = article_like_num
         article_item['article_collect'] = article_collect
